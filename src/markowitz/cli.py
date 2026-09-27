@@ -44,6 +44,22 @@ def parse_args():
     parser.add_argument("--rf", type=float, help="Override annualized risk-free rate")
     parser.add_argument("--allow-short", action="store_true", help="Allow negative (short) weights")
     parser.add_argument("--points", type=int, default=100, help="Number of efficient frontier points")
+    parser.add_argument(
+        "--weights",
+        nargs="+",
+        type=float,
+        default=None,
+        help="Evaluate a specific weight mix instead of/alongside optimizing, "
+        "in the same order as --tickers (or the config's tickers). "
+        "Must sum to 1.0, e.g. --weights 0.6 0.2 0.2",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Override the output folder for the chart (defaults to config's output_dir, "
+        "or outputs/custom when --weights is used without this flag)",
+    )
     return parser.parse_args()
 
 
@@ -64,19 +80,45 @@ def main():
     rf = args.rf if args.rf is not None else cfg["risk_free_rate"]
     allow_short = args.allow_short or cfg["allow_short"]
     trading_days = cfg["trading_days"]
-    output_dir = Path(cfg["output_dir"])
+
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+    elif args.weights:
+        output_dir = Path("outputs/custom")
+    else:
+        output_dir = Path(cfg["output_dir"])
+
+    custom_weights = None
+    if args.weights:
+        if len(args.weights) != len(tickers):
+            raise SystemExit(
+                f"--weights has {len(args.weights)} values but there are {len(tickers)} tickers "
+                f"({tickers}). Provide one weight per ticker, in that order."
+            )
+        total = sum(args.weights)
+        if abs(total - 1.0) > 1e-6:
+            raise SystemExit(f"--weights must sum to 1.0 (got {total:.4f}).")
+        custom_weights = args.weights
 
     print(f"Downloading data for {tickers} from {start} to {end or 'today'}...")
     prices = download_prices(tickers, start, end)
     returns = compute_log_returns(prices)
     mean_returns, cov_matrix = annualize_stats(returns, trading_days)
 
+    # Defensive: make absolutely sure everything downstream is indexed in the
+    # caller's ticker order, regardless of what order the data came back in.
+    mean_returns = mean_returns.reindex(tickers)
+    cov_matrix = cov_matrix.reindex(index=tickers, columns=tickers)
+
     print("\nAnnualized mean returns:")
-    print(mean_returns.to_string())
-    asset_vols = (cov_matrix.values.diagonal() ** 0.5)
+    for t, r in mean_returns.items():
+        print(f"  {t}: {r:.2%}")
+    asset_vols = cov_matrix.values.diagonal() ** 0.5
     print("\nAnnualized volatility:")
     for t, v in zip(tickers, asset_vols):
         print(f"  {t}: {v:.2%}")
+    print("\nCorrelation matrix:")
+    print(returns.corr().round(2).to_string())
     print()
 
     min_var_w = min_variance_portfolio(mean_returns, cov_matrix, allow_short)
@@ -87,6 +129,21 @@ def main():
 
     print_portfolio("Minimum Variance Portfolio", tickers, min_var_w, min_var_ret, min_var_vol, rf)
     print_portfolio("Maximum Sharpe Ratio Portfolio", tickers, max_sharpe_w, max_sharpe_ret, max_sharpe_vol, rf)
+
+    custom_point = None
+    if custom_weights is not None:
+        import numpy as np
+
+        custom_ret, custom_vol = portfolio_performance(np.array(custom_weights), mean_returns, cov_matrix)
+        print_portfolio(
+            f"Custom Portfolio ({', '.join(f'{t}={w:.0%}' for t, w in zip(tickers, custom_weights))})",
+            tickers,
+            custom_weights,
+            custom_ret,
+            custom_vol,
+            rf,
+        )
+        custom_point = (custom_ret, custom_vol)
 
     frontier_returns, frontier_vols = efficient_frontier(
         mean_returns, cov_matrix, n_points=args.points, allow_short=allow_short
@@ -101,6 +158,8 @@ def main():
         (min_var_ret, min_var_vol),
         (max_sharpe_ret, max_sharpe_vol),
         output_dir / "efficient_frontier.png",
+        custom_point=custom_point,
+        custom_label="Your Portfolio" if custom_point else None,
     )
     print(f"Saved efficient frontier chart to {out_path}")
 

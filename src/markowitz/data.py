@@ -26,6 +26,11 @@ def download_prices(tickers: list[str], start: str, end: str | None = None) -> p
     """
     raw = yf.download(tickers, start=start, end=end, auto_adjust=True, progress=False)
     prices = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else raw
+    # yfinance returns multi-ticker columns alphabetically, not in the order
+    # they were requested. Reindex to the caller's order so every downstream
+    # consumer (weights, covariance diagonal, printed labels) lines up with
+    # the tickers list the caller passed in.
+    prices = prices.reindex(columns=tickers)
     prices = prices.dropna(how="any")
     if prices.empty:
         raise ValueError(
