@@ -1,0 +1,2 @@
+[console_scripts]
+markowitz = markowitz.cli:main

@@ -1,0 +1,15 @@
+LICENSE
+README.md
+pyproject.toml
+src/markowitz/__init__.py
+src/markowitz/cli.py
+src/markowitz/data.py
+src/markowitz/optimize.py
+src/markowitz/plotting.py
+src/markowitz_portfolio_optimizer.egg-info/PKG-INFO
+src/markowitz_portfolio_optimizer.egg-info/SOURCES.txt
+src/markowitz_portfolio_optimizer.egg-info/dependency_links.txt
+src/markowitz_portfolio_optimizer.egg-info/entry_points.txt
+src/markowitz_portfolio_optimizer.egg-info/requires.txt
+src/markowitz_portfolio_optimizer.egg-info/top_level.txt
+tests/test_optimize.py
