@@ -1,0 +1,7 @@
+tickers: ["SPY", "VXUS", "QTUM"]
+start_date: "2019-01-01"
+end_date: null        # null = up to today
+risk_free_rate: 0.04  # annualized
+trading_days: 252
+allow_short: false    # true = allow negative weights (short selling)
+output_dir: "outputs"
